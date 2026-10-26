@@ -20,9 +20,11 @@ struct TGAHeader {
 };
 #pragma pack(pop)
 
+// 聚合体|没有用户声明的构造函数|没有私有或受保护的非静态数据成员|没有基类，也没有虚函数
 struct TGAColor {
     std::uint8_t bgra[4] = {0,0,0,0};
     std::uint8_t bytespp = 4;
+    // 聚合初始化
     std::uint8_t& operator[](const int i) { return bgra[i]; }
 };
 
