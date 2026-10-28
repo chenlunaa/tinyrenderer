@@ -1,12 +1,19 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
+#include "tgaimage.h"
 
 struct Vec3f {
     // int会被截断
     float x, y, z;
+};
+
+struct Vec3i {
+    int x, y, z;
+};
+
+struct Triangle {
+    Vec3i v0, v1, v2;
+    TGAColor color[3];
 };
 
 class Model {

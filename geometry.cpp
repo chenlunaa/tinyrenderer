@@ -1,4 +1,7 @@
 #include "geometry.h"
+#include <iostream>
+#include <fstream>
+#include <sstream>
 
 void Model::parseObjFile(const std::string &filename)
 {

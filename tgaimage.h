@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 
 #pragma pack(push,1)
 struct TGAHeader {
@@ -26,6 +27,26 @@ struct TGAColor {
     std::uint8_t bytespp = 4;
     // 聚合初始化
     std::uint8_t& operator[](const int i) { return bgra[i]; }
+
+    TGAColor operator+(const TGAColor& other) const{
+        TGAColor out = *this;
+        for (int i=0; i<3; i++) {
+            auto value = out.bgra[i] + other.bgra[i];
+            auto color = static_cast<uint8_t>(std::clamp(value, 0, 255));
+            out.bgra[i] = color;
+        }
+        return out;
+    }
+
+    TGAColor operator*(double intensity) const{
+        TGAColor out = *this;
+        for (int i=0; i<3; i++) {
+            double value = bgra[i] * intensity;
+            auto color = static_cast<uint8_t>(std::clamp(value, 0.0, 255.0));
+            out.bgra[i] = color;
+        }
+        return out;
+    }
 };
 
 struct TGAImage {

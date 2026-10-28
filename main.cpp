@@ -1,14 +1,33 @@
 #include <cmath>
+#include <filesystem>
 #include "geometry.h"
 #include "tgaimage.h"
 
-constexpr TGAColor white   = {255, 255, 255, 255}; // attention, BGRA order
-constexpr TGAColor green   = {  0, 255,   0, 255};
-constexpr TGAColor red     = {  0,   0, 255, 255};
-constexpr TGAColor blue    = {255, 128,  64, 255};
-constexpr TGAColor yellow  = {  0, 200, 255, 255};
+constexpr int width  = 128;
+constexpr int height = 128;
+
+constexpr TGAColor white   = {{255, 255, 255, 255}}; // attention, BGRA order
+constexpr TGAColor green   = {{  0, 255,   0, 255}};
+constexpr TGAColor red     = {{  0,   0, 255, 255}};
+constexpr TGAColor blue    = {{255, 128,  64, 255}};
+constexpr TGAColor yellow  = {{  0, 200, 255, 255}};
+
+double sign_triangleArea(const Triangle& t) {
+    return 0.5 * ((t.v1.y-t.v0.y)*(t.v1.x+t.v0.x) + (t.v2.y-t.v1.y)*(t.v2.x+t.v1.x) + (t.v0.y-t.v2.y)*(t.v0.x+t.v2.x));
+}
+std::tuple<double, double, double> barycentric2D(const Triangle& t, int x, int y) {
+    double totalArea = sign_triangleArea(t);
+    double alpha = sign_triangleArea({t.v1, t.v2, {x, y, 0}}) / totalArea;
+    double beta  = sign_triangleArea({t.v2, t.v0, {x, y, 0}}) / totalArea;
+    double gamma = sign_triangleArea({t.v0, t.v1, {x, y, 0}}) / totalArea;
+    return {alpha, beta, gamma};
+}
 
 void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, TGAColor color) {
+    bool bIsRange = (ax >= 0 && ax < width && ay >= 0 && ay < height) && (bx >= 0 && bx < width && by >= 0 && by < height);
+    if (!bIsRange) {
+        return;
+    }
     bool steep = std::abs(ax - bx) < std::abs(ay - by);
     if (steep) {
         std::swap(ax, ay);
@@ -31,55 +50,35 @@ void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, TGAColor color)
     }
 }
 
-int main(int argc, char** argv) {
-    constexpr int width  = 1200;
-    constexpr int height = 1200;
-    TGAImage framebuffer(width, height, TGAImage::RGB);
+void triangle(const Triangle& t, TGAImage& framebuffer) {
+   int bbminx = std::min(std::min(t.v0.x, t.v1.x), t.v2.x);
+   int bbminy = std::min(std::min(t.v0.y, t.v1.y), t.v2.y);
+   int bbmaxx = std::max(std::max(t.v0.x, t.v1.x), t.v2.x);
+   int bbmaxy = std::max(std::max(t.v0.y, t.v1.y), t.v2.y);
 
-    // int ax =  7, ay =  3;
-    // int bx = 12, by = 37;
-    // int cx = 62, cy = 53;
-
-    // line(ax, ay, bx, by, framebuffer, red);
-    // line(cx, cy, bx, by, framebuffer, green);
-    // line(cx, cy, ax, ay, framebuffer, blue);
-
-    // framebuffer.set(ax, ay, white);
-    // framebuffer.set(bx, by, white);
-    // framebuffer.set(cx, cy, white);
-
-    Model* model = new Model(); 
-    model->parseObjFile("D:\\Games101\\tinyrenderer\\obj\\diablo3_pose\\diablo3_pose.obj");
-
-    for (auto face : model->faces) {
-        int idx0 = face[0];
-        int idx1 = face[1];
-        int idx2 = face[2];
-
-        Vec3f v0 = model->vertices[idx0];
-        Vec3f v1 = model->vertices[idx1];
-        Vec3f v2 = model->vertices[idx2];
-
-        int screen_x0 = (v0.x + 1.0) * width / 2.0;
-        int screen_y0 = (v0.y + 1.0) * height / 2.0;
-
-        int screen_x1 = (v1.x + 1.0) * width / 2.0;
-        int screen_y1 = (v1.y + 1.0) * height / 2.0;
-
-        int screen_x2 = (v2.x + 1.0) * width / 2.0;
-        int screen_y2 = (v2.y + 1.0) * height / 2.0;
-        
-        line(screen_x0, screen_y0, screen_x1, screen_y1, framebuffer, red);
-        line(screen_x1, screen_y1, screen_x2, screen_y2, framebuffer, red);
-        line(screen_x2, screen_y2, screen_x0, screen_y0, framebuffer, red);
-
-        framebuffer.set(screen_x0, screen_y0, white);
-        framebuffer.set(screen_x1, screen_y1, white);
-        framebuffer.set(screen_x2, screen_y2, white);
-
+   // 遍历包围盒内的每个像素点，判断是否在三角形内,使用叉乘
+#pragma omp parallel for
+    for (int x = bbminx; x <= bbmaxx; x++) {
+        for (int y = bbminy; y <= bbmaxy; y++) {
+            auto[aplha, beta, gamma] = barycentric2D(t, x, y);
+            if (aplha < 0 || beta < 0 || gamma < 0) {
+                continue;
+            }else {
+                TGAColor pixelColor = t.color[0] * aplha + t.color[1] * beta + t.color[2] * gamma;
+                framebuffer.set(x, y, pixelColor);
+            }
+        }
     }
+}
 
-    framebuffer.write_tga_file("framebuffer.tga");
+int main(int argc, char** argv) {
+    
+    TGAImage framebuffer(width, height, TGAImage::RGB);
+    Triangle t1 = {{10, 70, 0}, {50, 120, 0}, {70, 80, 0}, {red, green, blue}};
+    triangle(t1, framebuffer);
+
+    const std::filesystem::path outputPath = std::filesystem::path(__FILE__).parent_path() / "framebuffer.tga";
+    framebuffer.write_tga_file(outputPath.string());
     return 0;
 }
 
