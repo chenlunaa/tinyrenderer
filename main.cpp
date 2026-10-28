@@ -3,23 +3,35 @@
 #include "geometry.h"
 #include "tgaimage.h"
 
-constexpr int width  = 128;
-constexpr int height = 128;
+constexpr int width  = 800;
+constexpr int height = 800;
 
-constexpr TGAColor white   = {{255, 255, 255, 255}}; // attention, BGRA order
-constexpr TGAColor green   = {{  0, 255,   0, 255}};
-constexpr TGAColor red     = {{  0,   0, 255, 255}};
-constexpr TGAColor blue    = {{255, 128,  64, 255}};
-constexpr TGAColor yellow  = {{  0, 200, 255, 255}};
+// constexpr TGAColor white   = {{255, 255, 255, 255}}; // attention, BGRA order
+// constexpr TGAColor green   = {{  0, 255,   0, 255}};
+// constexpr TGAColor red     = {{  0,   0, 255, 255}};
+// constexpr TGAColor blue    = {{255, 128,  64, 255}};
+// constexpr TGAColor yellow  = {{  0, 200, 255, 255}};
 
-double sign_triangleArea(const Triangle& t) {
-    return 0.5 * ((t.v1.y-t.v0.y)*(t.v1.x+t.v0.x) + (t.v2.y-t.v1.y)*(t.v2.x+t.v1.x) + (t.v0.y-t.v2.y)*(t.v0.x+t.v2.x));
+double signedArea(const Vec3i& a, const Vec3i& b, const Vec3i& c) {
+    double ax = a.x, ay = a.y;
+    double bx = b.x, by = b.y;
+    double cx = c.x, cy = c.y;
+    return 0.5 * ((by - ay) * (bx + ax)
+                + (cy - by) * (cx + bx)
+                + (ay - cy) * (ax + cx));
 }
+
+double signedArea(const Triangle& t) {
+    return signedArea(t.v0, t.v1, t.v2);
+}
+
 std::tuple<double, double, double> barycentric2D(const Triangle& t, int x, int y) {
-    double totalArea = sign_triangleArea(t);
-    double alpha = sign_triangleArea({t.v1, t.v2, {x, y, 0}}) / totalArea;
-    double beta  = sign_triangleArea({t.v2, t.v0, {x, y, 0}}) / totalArea;
-    double gamma = sign_triangleArea({t.v0, t.v1, {x, y, 0}}) / totalArea;
+    double totalArea = signedArea(t);
+    Vec3i p{x, y, 0};
+    if (std::abs(totalArea) < 1e-12) return {-1.0, -1.0, -1.0};
+    double alpha = signedArea(t.v1, t.v2, p) / totalArea;
+    double beta  = signedArea(t.v2, t.v0, p) / totalArea;
+    double gamma = signedArea(t.v0, t.v1, p) / totalArea;
     return {alpha, beta, gamma};
 }
 
@@ -50,7 +62,7 @@ void line(int ax, int ay, int bx, int by, TGAImage& framebuffer, TGAColor color)
     }
 }
 
-void triangle(const Triangle& t, TGAImage& framebuffer) {
+void triangle(const Triangle& t, TGAImage& framebuffer, ZBuffer& zbuffer) {
    int bbminx = std::min(std::min(t.v0.x, t.v1.x), t.v2.x);
    int bbminy = std::min(std::min(t.v0.y, t.v1.y), t.v2.y);
    int bbmaxx = std::max(std::max(t.v0.x, t.v1.x), t.v2.x);
@@ -64,18 +76,47 @@ void triangle(const Triangle& t, TGAImage& framebuffer) {
             if (aplha < 0 || beta < 0 || gamma < 0) {
                 continue;
             }else {
-                TGAColor pixelColor = t.color[0] * aplha + t.color[1] * beta + t.color[2] * gamma;
-                framebuffer.set(x, y, pixelColor);
+                float z = aplha * t.v0.z + beta * t.v1.z + gamma * t.v2.z;
+                if (zbuffer.at(x, y) < z) {
+                    TGAColor pixelColor = t.color[0] * aplha + t.color[1] * beta + t.color[2] * gamma;
+                    framebuffer.set(x, y, pixelColor);
+                    zbuffer.at(x, y) = z;
+                }
             }
         }
     }
 }
 
+// [-1, 1] -> [0, width], [0, height]
+std::tuple<int, int, int> projectToScreen(Vec3f v) {
+    int x = static_cast<int>((v.x + 1.0f) * width / 2.0f);
+    int y = static_cast<int>((v.y + 1.0f) * height / 2.0f);
+    int z = static_cast<int>((v.z + 1.0f) * 255.0f / 2.0f);
+    return {x, y, z};
+}
+
 int main(int argc, char** argv) {
     
     TGAImage framebuffer(width, height, TGAImage::RGB);
-    Triangle t1 = {{10, 70, 0}, {50, 120, 0}, {70, 80, 0}, {red, green, blue}};
-    triangle(t1, framebuffer);
+    ZBuffer zbuffer(width, height);
+    Model model;
+    model.parseObjFile("D:\\Games101\\tinyrenderer\\obj\\diablo3_pose\\diablo3_pose.obj");
+    for (auto face : model.faces) {
+        Vec3f a = model.vertices[face[0]];
+        Vec3f b = model.vertices[face[1]];
+        Vec3f c = model.vertices[face[2]];
+        auto [ax, ay, az] = projectToScreen(a);
+        auto [bx, by, bz] = projectToScreen(b);
+        auto [cx, cy, cz] = projectToScreen(c);
+        TGAColor rnd[3];
+        for (int i = 0; i < 3; i++) {
+            for (int c = 0; c < 3; c++) {
+                rnd[i][c] = static_cast<uint8_t>(std::rand() % 255);
+            }
+        }
+        Triangle t({ax, ay, az}, {bx, by, bz}, {cx, cy, cz}, rnd[0], rnd[1], rnd[2]);
+        triangle(t, framebuffer, zbuffer);
+    }
 
     const std::filesystem::path outputPath = std::filesystem::path(__FILE__).parent_path() / "framebuffer.tga";
     framebuffer.write_tga_file(outputPath.string());
