@@ -35,7 +35,8 @@ public:
     void parseObjFile(const std::string& filename);
 };
 
-struct ZBuffer {
+class ZBuffer {
+public:
     int w, h;
     std::vector<float> data;
 
@@ -45,7 +46,8 @@ struct ZBuffer {
 
     float& at(int x, int y)       { return data[static_cast<size_t>(y) * w + x]; }
     float  at(int x, int y) const { return data[static_cast<size_t>(y) * w + x]; }
-
+    void SaveZbuffer(int width, int height,
+                 const std::string filename);
     void clear() { std::fill(data.begin(), data.end(),
                              -std::numeric_limits<float>::max()); }
 };

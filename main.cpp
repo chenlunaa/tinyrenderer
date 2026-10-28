@@ -120,6 +120,9 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path outputPath = std::filesystem::path(__FILE__).parent_path() / "framebuffer.tga";
     framebuffer.write_tga_file(outputPath.string());
+    const std::filesystem::path outputZBuffer = std::filesystem::path(__FILE__).parent_path() / "ZBuffer.tga";
+    std::string ZBufferpath = outputZBuffer.string();
+    zbuffer.SaveZbuffer(width, height,  ZBufferpath);
     return 0;
 }
 
